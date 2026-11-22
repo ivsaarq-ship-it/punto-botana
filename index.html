@@ -202,7 +202,7 @@ main{padding:16px;max-width:760px;margin:0 auto}
 (function (g) {
   const PB = (g.PB = g.PB || {});
   PB.config = {
-    version: '0.5.1',
+    version: '0.5.2',
     nombreApp: 'Punto Botana',
     subtitulo: 'by Kalli Terraza',
     supabaseUrl: 'https://cjmssooisrejdshskoec.supabase.co',
@@ -1148,15 +1148,29 @@ main{padding:16px;max-width:760px;margin:0 auto}
       h('button', { class: 'btn' }, 'Agregar al menú'));
 
       function fila(p) {
-        const inp = h('input', { type: 'number', step: 'any', min: '0', inputmode: 'decimal', value: p.precio_venta ?? '', placeholder: '—', 'aria-label': 'Precio de ' + p.nombre });
+        const inp = h('input', { class: 'precio-inp', type: 'number', step: 'any', min: '0', inputmode: 'decimal', enterkeyhint: 'next', value: p.precio_venta ?? '', placeholder: '—', 'aria-label': 'Precio de ' + p.nombre });
         const estado = () => p.precio_venta == null ? ['Falta precio', 'estado-falta'] : p.activo ? ['Disponible', 'estado-ok'] : ['Agotado / oculto', 'estado-off'];
         const [txt, cls] = estado();
+        const estadoEl = h('small', { class: cls }, txt);
+        const campoEl = h('label', { class: 'precio-campo' + (p.precio_venta == null ? ' falta' : '') }, h('span', {}, '$'), inp);
+        // Guarda sin redibujar la lista: el teclado no se cierra y se puede seguir al siguiente precio.
         inp.addEventListener('change', async () => {
           const v = inp.value === '' ? null : Number(inp.value);
           if (v === (p.precio_venta == null ? null : Number(p.precio_venta))) return;
           if (v != null && !(v >= 0)) return aviso('Precio inválido', 'mal');
-          try { await PB.datos.actualizar('productos', p.id, { precio_venta: v }); p.precio_venta = v; aviso(`${p.nombre}: ${v == null ? 'sin precio' : dinero(v)}`); pintarLista(); }
-          catch (e) { aviso('No se guardó: ' + e.message, 'mal'); }
+          try {
+            await PB.datos.actualizar('productos', p.id, { precio_venta: v }); p.precio_venta = v;
+            const [t2, c2] = estado(); estadoEl.textContent = t2; estadoEl.className = c2;
+            campoEl.classList.toggle('falta', v == null);
+            pintarAlerta(); aviso(`${p.nombre}: ${v == null ? 'sin precio' : dinero(v)}`);
+          } catch (e) { aviso('No se guardó: ' + e.message, 'mal'); }
+        });
+        // «Siguiente» en el teclado: pasa al precio de abajo.
+        inp.addEventListener('keydown', (ev) => {
+          if (ev.key !== 'Enter') return;
+          ev.preventDefault();
+          const todos = [...lista.querySelectorAll('input.precio-inp')], sig = todos[todos.indexOf(inp) + 1];
+          if (sig) { sig.focus(); sig.select(); } else inp.blur();
         });
         return h('div', { class: 'fila-menu' }, foto(p.nombre),
           h('span', { class: 'crece' },
@@ -1166,18 +1180,21 @@ main{padding:16px;max-width:760px;margin:0 auto}
               try { await PB.datos.actualizar('productos', p.id, { nombre: nuevo }); aviso(`Ahora se llama «${nuevo}»`); p.nombre = nuevo; pintarLista(); }
               catch (e) { aviso('No se cambió: ' + e.message, 'mal'); }
             } }, h('b', {}, p.nombre), icono('lapiz', 14)),
-            h('small', { class: cls }, txt)),
-          h('label', { class: 'precio-campo' + (p.precio_venta == null ? ' falta' : '') }, h('span', {}, '$'), inp),
+            estadoEl),
+          campoEl,
           h('button', { type: 'button', role: 'switch', class: 'switch', 'aria-checked': String(!!p.activo), 'aria-label': 'Disponible: ' + p.nombre, onclick: async () => {
             const nuevo = !p.activo;
             try { await PB.datos.actualizar('productos', p.id, { activo: nuevo }); p.activo = nuevo; pintarLista(); }
             catch (e) { aviso('No se cambió: ' + e.message, 'mal'); }
           } }));
       }
-      function pintarLista() {
+      function pintarAlerta() {
         const sinPrecio = prods.filter((p) => p.activo && p.precio_venta == null).length;
         alerta.replaceChildren(sinPrecio ? h('div', { class: 'alerta' }, h('div', { class: 'alerta-fila' }, icono('alerta'),
           `${sinPrecio} ${sinPrecio === 1 ? 'producto' : 'productos'} sin precio: no aparecen para vender.`)) : '');
+      }
+      function pintarLista() {
+        pintarAlerta();
         const ver = prods.filter((p) => !filtro || p.nombre.toLowerCase().includes(filtro));
         const cats = E.CATEGORIAS.concat([...new Set(ver.map((p) => p.categoria))].filter((c) => !E.CATEGORIAS.includes(c))).filter((c) => ver.some((p) => p.categoria === c));
         lista.replaceChildren(...(cats.length ? cats.map((c) => h('section', {}, h('div', { class: 'tit' }, c),
