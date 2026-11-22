@@ -329,7 +329,7 @@ main>.total{padding:12px 14px;margin:12px 0}
 (function (g) {
   const PB = (g.PB = g.PB || {});
   PB.config = {
-    version: '0.13.0',
+    version: '0.13.1',
     nombreApp: 'Punto Botana',
     subtitulo: 'by Kalli Terraza',
     supabaseUrl: 'https://cjmssooisrejdshskoec.supabase.co',
@@ -1397,7 +1397,7 @@ main>.total{padding:12px 14px;margin:12px 0}
     async mostrar(cont) {
       const { h, aviso, dinero, dineroCorto } = PB.ui;
       const R = PB.reglasCorte, perfil = PB.estado.perfil || {}, dia = PB.ui.hoy();
-      const admin = ['dueno', 'encargado'].includes(perfil.rol);
+      const admin = ['dueno', 'encargado'].includes(perfil.rol) && !PB.estado.vistaMesero; // en vista de mesero no se edita
       const fecha = (iso) => (PB.reglasVentas ? PB.reglasVentas.fechaLocal(iso) : String(iso).slice(0, 10));
       const cuerpo = h('div', {});
       let datos, reparto;
@@ -1432,7 +1432,7 @@ main>.total{padding:12px 14px;margin:12px 0}
           h('input', { class: 'entrada', inputmode: 'decimal', style: 'max-width:90px', placeholder: '%', name: 'pct-' + i, value: x.porcentaje == null ? '' : x.porcentaje,
             oninput: (ev) => { x.porcentaje = ev.target.value === '' ? null : Number(ev.target.value.replace(/[^0-9.]/g, '')); } }))));
         pintarFilas();
-        return h('details', { class: 'grupo-neg' }, h('summary', {}, h('span', {}, h('b', {}, 'Definir reparto (administrador)'))),
+        return h('details', { class: 'grupo-neg' }, h('summary', {}, h('span', {}, h('b', {}, 'Definir reparto de propina'))),
           h('div', { style: 'padding:0 12px 12px;display:grid;gap:8px' }, lista,
             h('button', { type: 'button', class: 'btn sec', onclick: () => { filas.push({ area: '', porcentaje: null, orden: filas.length + 1, nuevo: true }); pintarFilas(); } }, '+ Área'),
             h('button', { type: 'button', class: 'btn', onclick: async () => {
@@ -2272,9 +2272,9 @@ main>.total{padding:12px 14px;margin:12px 0}
   const vistaGuardada = () => { try { return localStorage.getItem('pb_vista_mesero') === '1'; } catch (e) { return false; } };
   PB.estado = { perfil: null, vistaMesero: vistaGuardada() };
   const ponerVista = (v) => { PB.estado.vistaMesero = v; try { localStorage.setItem('pb_vista_mesero', v ? '1' : '0'); } catch (e) { /* nada */ } };
-  const ORDEN = ['cocina', 'ventas', 'menu', 'compras', 'gastos', 'costos', 'insumos', 'proveedores', 'equipo'];
-  const IC = { cocina: 'cocina', ventas: 'ventas', menu: 'menu', compras: 'compras', gastos: 'gastos', costos: 'costos', insumos: 'insumos', proveedores: 'proveedores', equipo: 'equipo' };
-  const CORTO = { menu: 'Menú', costos: 'Costos' };
+  const ORDEN = ['cocina', 'ventas', 'menu', 'compras', 'gastos', 'costos', 'insumos', 'proveedores', 'equipo', 'corte'];
+  const IC = { cocina: 'cocina', ventas: 'ventas', menu: 'menu', compras: 'compras', gastos: 'gastos', costos: 'costos', insumos: 'insumos', proveedores: 'proveedores', equipo: 'equipo', corte: 'gastos' };
+  const CORTO = { menu: 'Menú', costos: 'Costos', corte: 'Propinas' };
   const TONO = ['ic-n', 'ic-v', 'ic-a'];
   const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 
