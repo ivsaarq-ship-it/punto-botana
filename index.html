@@ -327,7 +327,7 @@ main>.total{padding:12px 14px;margin:12px 0}
 (function (g) {
   const PB = (g.PB = g.PB || {});
   PB.config = {
-    version: '0.12.0',
+    version: '0.12.1',
     nombreApp: 'Punto Botana',
     subtitulo: 'by Kalli Terraza',
     supabaseUrl: 'https://cjmssooisrejdshskoec.supabase.co',
@@ -2301,12 +2301,12 @@ main>.total{padding:12px 14px;margin:12px 0}
           h('b', {}, saludo + (nombre ? ', ' + cap(nombre) : '')))),
       admin ? hoyCaja : meseroCaja,
       h('main', {},
-        PB.estado.vistaMesero ? h('div', { class: 'alerta' }, h('b', {}, 'Estás viendo la app como mesero.'),
-          h('button', { class: 'btn sec', type: 'button', onclick: () => { PB.estado.vistaMesero = false; inicio(); } }, 'Volver a administrador')) : null,
         h('a', { class: 'cta', href: '#/comandero' }, h('span', { class: 'ic' }, icono('comanda', 24)),
           h('span', { class: 'crece' }, h('b', {}, 'Nueva orden'), h('span', {}, 'Mesa, para llevar o plataforma')), icono('sig', 22)),
         h('a', { class: 'cta azul', href: '#/cuentas' }, h('span', { class: 'ic' }, icono('cuenta', 24)),
           h('span', { class: 'crece' }, h('b', {}, 'Cuenta de mesa'), h('span', {}, 'Total, cuentas separadas y propina')), icono('sig', 22)),
+        PB.estado.vistaMesero ? h('div', { class: 'alerta', style: 'margin-top:20px' }, h('b', {}, 'Estás viendo la app como mesero.'),
+          h('button', { class: 'btn sec', type: 'button', onclick: () => { PB.estado.vistaMesero = false; inicio(); } }, 'Volver a administrador')) : null,
         admin ? (() => {
           const abierto = (() => { try { return localStorage.getItem('pb_admin_abierto') === '1'; } catch (e) { return false; } })();
           const d = h('details', { class: 'admin', open: abierto },
