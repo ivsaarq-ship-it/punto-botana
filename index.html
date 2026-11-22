@@ -273,7 +273,7 @@ main>.total{padding:12px 14px;margin:12px 0}
 (function (g) {
   const PB = (g.PB = g.PB || {});
   PB.config = {
-    version: '0.10.2',
+    version: '0.10.3',
     nombreApp: 'Punto Botana',
     subtitulo: 'by Kalli Terraza',
     supabaseUrl: 'https://cjmssooisrejdshskoec.supabase.co',
@@ -801,8 +801,9 @@ main>.total{padding:12px 14px;margin:12px 0}
           const r = await PB.datos.rpc('crear_pedido', { p_tipo: st.tipo, p_referencia: referencia, p_notas: notas.value.trim(), p_items: pedido.items });
           if (st.tipo === 'mesa') ocupadas.add(String(st.mesa));
           st.carrito = []; st.mesa = null; st.plat = ''; ref.value = ''; notas.value = '';
-          cerrarHoja(); pintarTipo();
+          cerrarHoja();
           aviso(`Pedido #${r.folio} enviado a cocina`);
+          location.hash = '#/inicio'; // regresa a la pantalla principal
         } catch (e) { aviso('No se envió: ' + e.message, 'mal'); }
         st.enviando = false;
       }
