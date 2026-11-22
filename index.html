@@ -329,7 +329,7 @@ main>.total{padding:12px 14px;margin:12px 0}
 (function (g) {
   const PB = (g.PB = g.PB || {});
   PB.config = {
-    version: '0.13.2',
+    version: '0.13.3',
     nombreApp: 'Punto Botana',
     subtitulo: 'by Kalli Terraza',
     supabaseUrl: 'https://cjmssooisrejdshskoec.supabase.co',
@@ -1400,11 +1400,12 @@ main>.total{padding:12px 14px;margin:12px 0}
       const admin = ['dueno', 'encargado'].includes(perfil.rol) && !PB.estado.vistaMesero; // en vista de mesero no se edita
       const fecha = (iso) => (PB.reglasVentas ? PB.reglasVentas.fechaLocal(iso) : String(iso).slice(0, 10));
       const cuerpo = h('div', {});
-      let datos, reparto;
+      let datos, reparto, cortes = [], filtro = '';
       async function cargar() {
-        const [pedidos, estados, cobros, rep] = await Promise.all(['pedidos', 'pedido_estados', 'cobros', 'reparto_propinas'].map((t) => PB.datos.listar(t, t === 'reparto_propinas' ? 'orden' : undefined)));
+        const [pedidos, estados, cobros, rep, cts] = await Promise.all(['pedidos', 'pedido_estados', 'cobros', 'reparto_propinas', 'cortes'].map((t) => PB.datos.listar(t, t === 'reparto_propinas' ? 'orden' : undefined)));
         datos = R.calcular({ pedidos, estados, cobros, uid: perfil.id, dia, fecha });
         reparto = rep;
+        cortes = admin ? cts : cts.filter((c) => c.creado_por === perfil.id); // el mesero solo ve los suyos
       }
       const linea = (a, b) => h('div', { class: 'cta-linea' }, h('span', {}, a), h('b', {}, b));
       function pintar() {
@@ -1421,7 +1422,23 @@ main>.total{padding:12px 14px;margin:12px 0}
             : h('p', { class: 'nota' }, 'El dueño aún no define cómo se reparte la propina.'),
           admin ? editorReparto() : null,
           h('button', { type: 'button', class: 'btn', onclick: hacerCorte }, 'Hacer corte'),
+          historial(),
           h('p', { class: 'nota', style: 'text-align:center' }, 'Cuenta lo que tú tomaste hoy (sin cancelados) y las propinas de las cuentas que tú cobraste.'));
+      }
+      // Bitácora de cortes: el mesero ve los suyos; el administrador ve todos y puede filtrar por persona.
+      function historial() {
+        const personas = [...new Set(cortes.map((c) => c.mesero || 'Sin nombre'))].sort();
+        const lista = cortes.filter((c) => !filtro || (c.mesero || 'Sin nombre') === filtro).sort((a, b) => (a.creado_en < b.creado_en ? 1 : -1));
+        const tot = (k) => lista.reduce((x, c) => x + Number(c[k] || 0), 0);
+        return h('div', {},
+          h('div', { class: 'tit' }, admin ? 'Bitácora de cortes' : 'Mi historial de cortes'),
+          admin && personas.length > 1 ? h('div', { class: 'extras', style: 'margin-bottom:8px' }, ['', ...personas].map((n) => h('button', { type: 'button', 'aria-pressed': String(filtro === n), onclick: () => { filtro = n; pintar(); } }, n || 'Todos'))) : null,
+          lista.length ? h('div', { class: 'cta-totales' }, h('div', { class: 'cta-linea' }, h('b', {}, `${lista.length} ${lista.length === 1 ? 'corte' : 'cortes'}`), h('b', {}, `${dineroCorto(tot('vendido'))} · propinas ${dineroCorto(tot('propinas'))}`))) : null,
+          lista.length ? h('div', { style: 'display:grid;gap:8px' }, lista.map((c) => h('div', { class: 'renglon corte-fila' },
+            h('div', { class: 'cta-linea' }, h('b', {}, (admin ? (c.mesero || 'Sin nombre') + ' · ' : '') + new Date(c.creado_en).toLocaleString('es-MX', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })), h('b', {}, dineroCorto(c.vendido))),
+            h('div', { class: 'cta-det' }, h('div', { class: 'cta-linea' }, h('span', {}, `${c.pedidos} pedidos · cobrado ${dineroCorto(c.cobrado)}`), h('span', {}, 'Propinas ' + dinero(c.propinas))),
+              (c.reparto || []).filter((x) => x.monto != null).map((x) => h('div', { class: 'cta-linea' }, h('span', {}, `${x.area} · ${x.porcentaje}%`), h('span', {}, dinero(x.monto)))))))) 
+            : h('p', { class: 'nota' }, 'Todavía no hay cortes.'));
       }
       // Solo administrador: definir cómo se reparte la propina.
       function editorReparto() {
@@ -1452,10 +1469,10 @@ main>.total{padding:12px 14px;margin:12px 0}
         try {
           const rp = R.repartir(datos.propinas, reparto);
           await PB.datos.agregar('cortes', { fecha: dia, mesero: perfil.nombre || perfil.correo || '', ...datos, reparto: rp.filas });
-          aviso('Corte guardado');
+          aviso('Corte guardado'); await cargar(); pintar();
         } catch (e) { aviso('No se guardó: ' + e.message, 'mal'); }
       }
-      cont.replaceChildren(PB.ui.encabezado('Mi corte', 'Lo que vendí hoy y mis propinas', true), h('main', {}, cuerpo));
+      cont.replaceChildren(PB.ui.encabezado(admin ? 'Cortes' : 'Mi corte', admin ? 'Bitácora de cada quien y reparto de propina' : 'Lo que vendí hoy y mis propinas', true), h('main', {}, cuerpo));
       await cargar(); pintar();
     },
   };
@@ -2274,7 +2291,7 @@ main>.total{padding:12px 14px;margin:12px 0}
   const ponerVista = (v) => { PB.estado.vistaMesero = v; try { localStorage.setItem('pb_vista_mesero', v ? '1' : '0'); } catch (e) { /* nada */ } };
   const ORDEN = ['cocina', 'ventas', 'menu', 'compras', 'gastos', 'costos', 'insumos', 'proveedores', 'equipo', 'corte'];
   const IC = { cocina: 'cocina', ventas: 'ventas', menu: 'menu', compras: 'compras', gastos: 'gastos', costos: 'costos', insumos: 'insumos', proveedores: 'proveedores', equipo: 'equipo', corte: 'gastos' };
-  const CORTO = { menu: 'Menú', costos: 'Costos', corte: 'Propinas' };
+  const CORTO = { menu: 'Menú', costos: 'Costos', corte: 'Cortes' };
   const TONO = ['ic-n', 'ic-v', 'ic-a'];
   const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 
