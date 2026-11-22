@@ -282,7 +282,7 @@ main>.total{padding:12px 14px;margin:12px 0}
 (function (g) {
   const PB = (g.PB = g.PB || {});
   PB.config = {
-    version: '0.10.10',
+    version: '0.10.11',
     nombreApp: 'Punto Botana',
     subtitulo: 'by Kalli Terraza',
     supabaseUrl: 'https://cjmssooisrejdshskoec.supabase.co',
@@ -530,6 +530,18 @@ main>.total{padding:12px 14px;margin:12px 0}
       return f ? h('img', { class: 'foto ' + (clase || ''), src: f, alt: '', loading: 'lazy' })
         : h('span', { class: 'foto mono ' + (clase || ''), 'aria-hidden': 'true' }, iniciales(nombre));
     },
+    // Confirmación con botones claros (sin el «Cancelar/Aceptar» del teléfono, que confunde).
+    confirmar(texto, si, no) {
+      return new Promise((resolver) => {
+        const cerrar = (r) => { v.remove(); resolver(r); };
+        const v = h('div', { class: 'velo', onclick: (ev) => ev.target === v && cerrar(false) },
+          h('section', { class: 'hoja', role: 'alertdialog', 'aria-modal': 'true', style: 'max-width:520px' },
+            h('b', { class: 'serif', style: 'font-size:20px' }, texto),
+            h('button', { type: 'button', class: 'btn', style: 'background:#B42318', onclick: () => cerrar(true) }, si || 'Sí'),
+            h('button', { type: 'button', class: 'btn sec', onclick: () => cerrar(false) }, no || 'No, regresar')));
+        document.body.append(v);
+      });
+    },
     // Foto en grande (para enseñarla al cliente). extra: botones opcionales abajo.
     verFoto(url, nombre, extra) {
       const cerrar = () => v.remove();
@@ -666,7 +678,7 @@ main>.total{padding:12px 14px;margin:12px 0}
                 h('span', {}, i.nombre, i.notas ? h('em', {}, i.notas) : null))),
               p.notas ? h('p', { class: 'ped-nota' }, 'Nota: ' + p.notas) : null,
               h('div', { class: 'ped-acc' },
-                h('button', { type: 'button', class: 'mini', onclick: () => confirm(`¿Cancelar el pedido #${p.folio}?`) && cambiar(p, 'cancelado') }, 'Cancelar'),
+                h('button', { type: 'button', class: 'mini', onclick: async () => (await PB.ui.confirmar(`¿Cancelar el pedido #${p.folio}?`, 'Sí, cancelar pedido')) && cambiar(p, 'cancelado') }, 'Cancelar'),
                 sig ? h('button', { type: 'button', class: 'btn', onclick: () => cambiar(p, sig) }, ACCION[e]) : null)));
         }) : [h('p', { class: 'vacio' }, 'Sin pedidos pendientes.')]));
       }
@@ -1109,7 +1121,7 @@ main>.total{padding:12px 14px;margin:12px 0}
       }
       async function accion(que) {
         const ids = [...st.seleccion];
-        if (que === 'borrar' && !confirm(`¿Borrar ${ids.length} ${ids.length === 1 ? 'nota' : 'notas'}? Queda registro como anulada y deja de contar.`)) return;
+        if (que === 'borrar' && !(await PB.ui.confirmar(`¿Borrar ${ids.length} ${ids.length === 1 ? 'nota' : 'notas'}? Deja de contar (queda registro).`, 'Sí, borrar'))) return;
         try {
           for (const id of ids) {
             if (que === 'borrar') {
@@ -1856,7 +1868,7 @@ main>.total{padding:12px 14px;margin:12px 0}
             seleccion ? h('div', { class: 'barra-sel', style: 'position:static' },
               h('button', { type: 'button', class: 'mini', onclick: () => { seleccion = null; pintar(); } }, 'Listo'),
               h('span', {}, `${seleccion.size} marcados`),
-              h('button', { type: 'button', class: 'mini peligro', disabled: !seleccion.size, onclick: cancelarMarcados }, 'Cancelar marcados'))
+              h('button', { type: 'button', class: 'mini peligro', disabled: !seleccion.size, onclick: cancelarMarcados }, 'Quitar de ventas'))
               : (todos.length ? h('button', { type: 'button', class: 'btn sec', onclick: () => { seleccion = new Set(); pintar(); } }, 'Seleccionar para corregir') : null),
             ...todos.map((p) => {
               const est = P.estadoActual(p.id, estados), cancelado = est === 'cancelado', marcado = seleccion && seleccion.has(p.id);
@@ -1872,10 +1884,10 @@ main>.total{padding:12px 14px;margin:12px 0}
       }
       async function cancelarMarcados() {
         const ids = [...seleccion];
-        if (!confirm(`¿Cancelar ${ids.length} ${ids.length === 1 ? 'pedido' : 'pedidos'}? Dejan de sumar en ventas (queda registro).`)) return;
+        if (!(await PB.ui.confirmar(`¿Quitar ${ids.length} ${ids.length === 1 ? 'pedido' : 'pedidos'} de las ventas? Dejan de sumar (queda registro).`, 'Sí, quitar de ventas'))) return;
         try {
           for (const id of ids) await PB.datos.agregar('pedido_estados', { pedido_id: id, estado: 'cancelado' });
-          seleccion = null; await cargar(); pintar(); pintarCalendario(); aviso('Pedidos cancelados');
+          seleccion = null; await cargar(); pintar(); pintarCalendario(); aviso('Pedidos quitados de ventas');
         } catch (e) { aviso('No se pudo: ' + e.message, 'mal'); }
       }
       function pintarCalendario() {
