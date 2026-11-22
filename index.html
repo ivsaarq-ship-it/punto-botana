@@ -70,9 +70,9 @@ main{padding:16px;max-width:760px;margin:0 auto}
 .alerta-fila{display:flex;gap:10px;align-items:center}
 .caja-info{background:var(--card);border:1px dashed var(--navyLinea);border-radius:16px;padding:14px;margin-top:16px;display:grid;gap:8px;font-size:14px}
 .crece{flex:1;min-width:0}.der{text-align:right}
-.aviso{position:fixed;left:16px;right:16px;bottom:96px;padding:14px 16px;border-radius:16px;color:#fff;font-weight:700;background:var(--verde);box-shadow:0 10px 24px rgba(0,0,0,.25);z-index:30;max-width:520px;margin:0 auto;animation:sube .2s ease-out}
+.aviso{position:fixed;left:16px;right:16px;top:calc(12px + env(safe-area-inset-top));padding:14px 16px;border-radius:16px;color:#fff;font-weight:700;background:var(--verde);box-shadow:0 10px 24px rgba(0,0,0,.25);z-index:30;max-width:520px;margin:0 auto;animation:sube .2s ease-out}
 .aviso.mal{background:#B42318}
-@keyframes sube{from{transform:translateY(12px);opacity:0}}
+@keyframes sube{from{transform:translateY(-12px);opacity:0}}
 /* Fotos */
 .foto{display:block;object-fit:cover;background:var(--naranjaSuave)}
 .foto.mono{display:grid;place-items:center;color:var(--naranjaTxt);font-weight:800;font-family:Fraunces,Georgia,serif}
@@ -202,7 +202,7 @@ main{padding:16px;max-width:760px;margin:0 auto}
 (function (g) {
   const PB = (g.PB = g.PB || {});
   PB.config = {
-    version: '0.5.2',
+    version: '0.5.3',
     nombreApp: 'Punto Botana',
     subtitulo: 'by Kalli Terraza',
     supabaseUrl: 'https://cjmssooisrejdshskoec.supabase.co',
