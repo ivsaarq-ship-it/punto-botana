@@ -342,7 +342,7 @@ main>.total{padding:12px 14px;margin:12px 0}
 (function (g) {
   const PB = (g.PB = g.PB || {});
   PB.config = {
-    version: '0.15.0',
+    version: '0.15.1',
     nombreApp: 'Punto Botana',
     subtitulo: 'by Kalli Terraza',
     supabaseUrl: 'https://cjmssooisrejdshskoec.supabase.co',
@@ -1316,7 +1316,8 @@ main>.total{padding:12px 14px;margin:12px 0}
         vendido: suma(mios),
         cobrado: suma(mesa.filter((p) => cobrados.has(p.id))),
         porCobrar: suma(mesa.filter((p) => !cobrados.has(p.id))),
-        otros: suma(mios.filter((p) => p.tipo !== 'mesa')), // para llevar y plataformas (se cobran al momento)
+        llevar: suma(mios.filter((p) => p.tipo === 'llevar')), // se cobra al momento (decisión de Sergio)
+        plataformas: suma(mios.filter((p) => p.tipo === 'plataforma')), // se cobra en la app de cada plataforma
         propinas: r2(cob.reduce((s, c) => s + Number(c.propina || 0), 0)),
       };
     },
@@ -1443,7 +1444,7 @@ main>.total{padding:12px 14px;margin:12px 0}
         cuerpo.replaceChildren(
           h('section', { class: 'hero' }, h('span', {}, 'Vendí hoy'), h('b', { class: 'num', style: 'display:block' }, dineroCorto(datos.vendido)),
             h('span', { style: 'font-size:12px' }, `${datos.pedidos} ${datos.pedidos === 1 ? 'pedido' : 'pedidos'}`)),
-          h('div', { class: 'cta-totales' }, linea('Cobrado (consumo)', dinero(datos.cobrado)), linea('Por cobrar (mesas)', dinero(datos.porCobrar)), datos.otros ? linea('Para llevar y plataformas', dinero(datos.otros)) : null,
+          h('div', { class: 'cta-totales' }, linea('Cobrado (consumo)', dinero(datos.cobrado)), linea('Por cobrar (mesas)', dinero(datos.porCobrar)), datos.llevar ? linea('Para llevar (cobrado al momento)', dinero(datos.llevar)) : null, datos.plataformas ? linea('Plataformas (en su app)', dinero(datos.plataformas)) : null,
             h('div', { class: 'total-grande' }, h('b', {}, 'Propinas'), h('b', { class: 'num' }, dineroCorto(datos.propinas)))),
           h('div', { class: 'tit' }, 'Reparto de la propina'),
           rp.definido
