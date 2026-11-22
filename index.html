@@ -329,7 +329,7 @@ main>.total{padding:12px 14px;margin:12px 0}
 (function (g) {
   const PB = (g.PB = g.PB || {});
   PB.config = {
-    version: '0.13.3',
+    version: '0.13.4',
     nombreApp: 'Punto Botana',
     subtitulo: 'by Kalli Terraza',
     supabaseUrl: 'https://cjmssooisrejdshskoec.supabase.co',
@@ -1400,7 +1400,7 @@ main>.total{padding:12px 14px;margin:12px 0}
       const admin = ['dueno', 'encargado'].includes(perfil.rol) && !PB.estado.vistaMesero; // en vista de mesero no se edita
       const fecha = (iso) => (PB.reglasVentas ? PB.reglasVentas.fechaLocal(iso) : String(iso).slice(0, 10));
       const cuerpo = h('div', {});
-      let datos, reparto, cortes = [], filtro = '';
+      let datos, reparto, cortes = [], filtro = '', sel = null; // sel: cortes marcados para borrar (solo administrador)
       async function cargar() {
         const [pedidos, estados, cobros, rep, cts] = await Promise.all(['pedidos', 'pedido_estados', 'cobros', 'reparto_propinas', 'cortes'].map((t) => PB.datos.listar(t, t === 'reparto_propinas' ? 'orden' : undefined)));
         datos = R.calcular({ pedidos, estados, cobros, uid: perfil.id, dia, fecha });
@@ -1432,13 +1432,29 @@ main>.total{padding:12px 14px;margin:12px 0}
         const tot = (k) => lista.reduce((x, c) => x + Number(c[k] || 0), 0);
         return h('div', {},
           h('div', { class: 'tit' }, admin ? 'Bitácora de cortes' : 'Mi historial de cortes'),
+          admin && lista.length ? (sel
+            ? h('div', { class: 'barra-sel', style: 'position:static;margin-bottom:8px' },
+              h('button', { type: 'button', class: 'mini', onclick: () => { sel = null; pintar(); } }, 'Listo'),
+              h('span', {}, `${sel.size} marcados`),
+              h('button', { type: 'button', class: 'mini peligro', disabled: !sel.size, onclick: borrarCortes }, 'Borrar'))
+            : h('button', { type: 'button', class: 'btn sec', style: 'margin-bottom:8px', onclick: () => { sel = new Set(); pintar(); } }, 'Seleccionar para borrar')) : null,
           admin && personas.length > 1 ? h('div', { class: 'extras', style: 'margin-bottom:8px' }, ['', ...personas].map((n) => h('button', { type: 'button', 'aria-pressed': String(filtro === n), onclick: () => { filtro = n; pintar(); } }, n || 'Todos'))) : null,
           lista.length ? h('div', { class: 'cta-totales' }, h('div', { class: 'cta-linea' }, h('b', {}, `${lista.length} ${lista.length === 1 ? 'corte' : 'cortes'}`), h('b', {}, `${dineroCorto(tot('vendido'))} · propinas ${dineroCorto(tot('propinas'))}`))) : null,
-          lista.length ? h('div', { style: 'display:grid;gap:8px' }, lista.map((c) => h('div', { class: 'renglon corte-fila' },
+          lista.length ? h('div', { style: 'display:grid;gap:8px' }, lista.map((c) => { const marcado = sel && sel.has(c.id); const fila = h('div', { class: 'renglon corte-fila' + (marcado ? ' marcada' : ''), style: admin ? 'cursor:pointer;user-select:none' : '',
+            onclick: () => { if (!sel) return; marcado ? sel.delete(c.id) : sel.add(c.id); pintar(); } },
+            sel ? h('span', { class: 'check' + (marcado ? ' on' : ''), 'aria-hidden': 'true', style: 'float:right' }) : null,
             h('div', { class: 'cta-linea' }, h('b', {}, (admin ? (c.mesero || 'Sin nombre') + ' · ' : '') + new Date(c.creado_en).toLocaleString('es-MX', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })), h('b', {}, dineroCorto(c.vendido))),
             h('div', { class: 'cta-det' }, h('div', { class: 'cta-linea' }, h('span', {}, `${c.pedidos} pedidos · cobrado ${dineroCorto(c.cobrado)}`), h('span', {}, 'Propinas ' + dinero(c.propinas))),
-              (c.reparto || []).filter((x) => x.monto != null).map((x) => h('div', { class: 'cta-linea' }, h('span', {}, `${x.area} · ${x.porcentaje}%`), h('span', {}, dinero(x.monto)))))))) 
+              (c.reparto || []).filter((x) => x.monto != null).map((x) => h('div', { class: 'cta-linea' }, h('span', {}, `${x.area} · ${x.porcentaje}%`), h('span', {}, dinero(x.monto))))));
+            if (admin) PB.ui.alPresionar(fila, () => { sel = sel || new Set(); sel.add(c.id); pintar(); });
+            return fila; }))
             : h('p', { class: 'nota' }, 'Todavía no hay cortes.'));
+      }
+      async function borrarCortes() {
+        const ids = [...sel];
+        if (!(await PB.ui.confirmar(`¿Borrar ${ids.length} ${ids.length === 1 ? 'corte' : 'cortes'} de la bitácora? No se puede deshacer.`, 'Sí, borrar'))) return;
+        try { await PB.datos.rpc('borrar_cortes', { p_ids: ids }); sel = null; aviso('Cortes borrados'); await cargar(); pintar(); }
+        catch (e) { aviso('No se pudo: ' + e.message, 'mal'); }
       }
       // Solo administrador: definir cómo se reparte la propina.
       function editorReparto() {
