@@ -329,7 +329,7 @@ main>.total{padding:12px 14px;margin:12px 0}
 (function (g) {
   const PB = (g.PB = g.PB || {});
   PB.config = {
-    version: '0.13.1',
+    version: '0.13.2',
     nombreApp: 'Punto Botana',
     subtitulo: 'by Kalli Terraza',
     supabaseUrl: 'https://cjmssooisrejdshskoec.supabase.co',
@@ -2366,9 +2366,7 @@ main>.total{padding:12px 14px;margin:12px 0}
     } catch (e) { cont.replaceChildren(h('span', { class: 'nota' }, 'Ventas de hoy: sin datos todavía.')); }
   }
 
-  // Mesero: mitad «En cocina» (naranja) y mitad «Listos para servir» (verde azulado). Los listos se marcan «Servido».
-  const leerServidos = () => { try { return new Set(JSON.parse(localStorage.getItem('pb_servidos') || '[]')); } catch (e) { return new Set(); } };
-  const guardarServidos = (s) => { try { localStorage.setItem('pb_servidos', JSON.stringify([...s].slice(-300))); } catch (e) { /* nada */ } };
+  // Mesero: mitad «En cocina» (naranja) y mitad «Preparados» hoy (verde azulado).
   async function tarjetaMesero(cont) {
     const { h, icono } = PB.ui;
     const P = PB.reglasPedidos, dia = PB.ui.hoy(), uid = (PB.estado.perfil || {}).id;
@@ -2376,31 +2374,11 @@ main>.total{padding:12px 14px;margin:12px 0}
       const [pedidos, estados] = await Promise.all([PB.datos.listar('pedidos'), PB.datos.listar('pedido_estados')]);
       const fecha = (iso) => (PB.reglasVentas ? PB.reglasVentas.fechaLocal(iso) : String(iso).slice(0, 10));
       const enCocina = P.abiertos(pedidos, estados).length;
-      const serv = leerServidos();
-      const listos = P.listosDe(pedidos, estados, uid).filter((p) => fecha(p.creado_en) === dia && !serv.has(p.id));
+      const listos = P.listosDe(pedidos, estados, uid).filter((p) => fecha(p.creado_en) === dia); // preparados hoy (servir = tocar el aviso)
       const donde = (p) => (p.tipo === 'mesa' ? 'Mesa ' + p.referencia : p.tipo === 'llevar' ? 'Para llevar' : p.referencia) + (p.cliente ? ' · ' + p.cliente : '');
-      // Lista de listos: «Servido» los quita sin cerrar; se sale con la flecha.
-      const verListos = () => {
-        if (!listos.length) return;
-        const cerrar = () => { v.remove(); tarjetaMesero(cont); };
-        const lista = h('div', { style: 'display:grid;gap:10px' });
-        const pintarL = () => {
-          const pend = listos.filter((p) => !serv.has(p.id));
-          lista.replaceChildren(...(pend.length ? pend.map((p) => h('div', { class: 'renglon cta-linea' }, h('span', {}, h('b', {}, `#${p.folio} `), donde(p)),
-            h('button', { type: 'button', class: 'mini', onclick: () => { serv.add(p.id); guardarServidos(serv); pintarL(); } }, 'Servido'))) : [h('p', { class: 'vacio' }, 'Todo servido.')]));
-        };
-        const v = h('div', { class: 'velo' },
-          h('section', { class: 'hoja', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Listos para servir' },
-            h('div', { class: 'cta-linea', style: 'justify-content:flex-start;gap:12px;align-items:center' },
-              h('button', { type: 'button', class: 'circ', 'aria-label': 'Regresar', onclick: cerrar }, icono('atras')),
-              h('b', { class: 'serif', style: 'font-size:22px' }, 'Listos para servir')),
-            lista));
-        pintarL();
-        document.body.append(v);
-      };
       cont.replaceChildren(h('div', { class: 'mitades' },
         h('a', { class: 'mitad cocina' + (enCocina ? ' con' : ''), href: '#/cocina', 'aria-label': `En cocina: ${enCocina}` }, h('span', {}, 'En cocina'), h('b', {}, String(enCocina))),
-        h('button', { type: 'button', class: 'mitad listos' + (listos.length ? ' con' : ''), 'aria-label': `Listos para servir: ${listos.length}`, onclick: verListos }, h('span', {}, 'Listos para servir'), h('b', {}, String(listos.length)))));
+        h('div', { class: 'mitad listos', 'aria-label': `Preparados hoy: ${listos.length}` }, h('span', {}, 'Preparados'), h('b', {}, String(listos.length)))));
     } catch (e) { cont.replaceChildren(h('span', { class: 'nota' }, 'Sin datos todavía.')); }
   }
 
