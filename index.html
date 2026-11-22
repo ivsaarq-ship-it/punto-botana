@@ -841,7 +841,7 @@ input.precio{width:96px;font:inherit;font-size:16px;color:var(--txt);background:
             .filter((c) => prods.some((p) => p.categoria === c))
             .map((c) => h('section', {}, h('div', { class: 'tit' }, c), h('div', { class: 'lista' },
               prods.filter((p) => p.categoria === c).map((p) => {
-                const inp = h('input', { class: 'precio', type: 'number', step: 'any', min: '0', inputmode: 'decimal', value: p.precio_venta ?? '', placeholder: 'Sin precio', 'aria-label': 'Precio de ' + p.nombre });
+                const inp = h('input', { class: 'precio', type: 'number', step: 'any', min: '0', inputmode: 'decimal', value: p.precio_venta ?? '', placeholder: '$ —', 'aria-label': 'Precio de ' + p.nombre });
                 const guardar = async () => {
                   const v = inp.value === '' ? null : Number(inp.value);
                   if (v === (p.precio_venta == null ? null : Number(p.precio_venta))) return;
