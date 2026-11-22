@@ -201,7 +201,7 @@ main{padding:16px;max-width:760px;margin:0 auto}
 (function (g) {
   const PB = (g.PB = g.PB || {});
   PB.config = {
-    version: '0.4.0',
+    version: '0.5.0',
     nombreApp: 'Punto Botana',
     subtitulo: 'by Kalli Terraza',
     supabaseUrl: 'https://cjmssooisrejdshskoec.supabase.co',
@@ -279,14 +279,16 @@ main{padding:16px;max-width:760px;margin:0 auto}
       salir: () => cli.auth.signOut(),
       usuario: async () => (await cli.auth.getUser()).data.user || null,
       rpc: (nombre, args) => r(cli.rpc(nombre, args)),
+      // Perfil con permiso; null si este usuario aún no tiene permiso (ej. celular de mesero sin activar).
       perfil: async () => {
         const u = (await cli.auth.getUser()).data.user;
         if (!u) return null;
-        const { data, error } = await cli.from('perfiles').select('*').eq('id', u.id).maybeSingle();
-        // Si la base aún no tiene roles (migración 002 sin correr), el único usuario es el dueño.
-        if (error) return { id: u.id, correo: u.email, rol: 'dueno', sinRoles: true };
-        return data || { id: u.id, correo: u.email, rol: 'empleado' };
+        const data = await r(cli.from('perfiles').select('*').eq('id', u.id).maybeSingle());
+        return data && data.activo !== false ? { ...data, correo: data.correo || u.email } : null;
       },
+      // Mesero: sesión sin correo (se activa con el código del negocio).
+      entrarSinCorreo: async () => { const d = await r(cli.auth.signInAnonymously()); return d.user; },
+      esSinCorreo: async () => !!((await cli.auth.getUser()).data.user || {}).is_anonymous,
     };
   }
 
@@ -308,6 +310,8 @@ main{padding:16px;max-width:760px;margin:0 auto}
     usuario() { return adaptador.usuario(); },
     rpc(nombre, args) { return adaptador.rpc(nombre, args); },
     perfil() { return adaptador.perfil(); },
+    entrarSinCorreo() { return adaptador.entrarSinCorreo(); },
+    esSinCorreo() { return adaptador.esSinCorreo(); },
   };
 })(typeof window !== 'undefined' ? window : globalThis);
 
@@ -648,7 +652,7 @@ main{padding:16px;max-width:760px;margin:0 auto}
         velo = h('div', { class: 'velo', onclick: (ev) => ev.target === velo && cerrarHoja() },
           h('section', { class: 'hoja', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Orden' },
             h('span', { class: 'asa', 'aria-hidden': 'true' }),
-            h('div', { class: 'hoja-top' }, h('div', {}, h('span', { class: 'serif', style: 'display:block;font-size:26px' }, donde()), h('small', { style: 'color:var(--sub)' }, (PB.estado.perfil || {}).correo || '')),
+            h('div', { class: 'hoja-top' }, h('div', {}, h('span', { class: 'serif', style: 'display:block;font-size:26px' }, donde()), h('small', { style: 'color:var(--sub)' }, 'Toma: ' + ((PB.estado.perfil || {}).nombre || (PB.estado.perfil || {}).correo || ''))),
               h('button', { type: 'button', class: 'mini', onclick: cerrarHoja }, 'Agregar más')),
             lista,
             h('label', { class: 'campo' }, h('span', {}, 'Nota para cocina'), notas),
@@ -890,33 +894,69 @@ main{padding:16px;max-width:760px;margin:0 auto}
 
 // ── equipo.pantalla (modules/equipo/pantalla/equipo.js)
 // id: equipo.pantalla · tipo: pantalla · módulo: equipo · dependencias: core.datos, ui.comunes
-// Quién usa la app y con qué permiso: Dueño y Encargado ven todo; Mesero solo comandero y cocina.
+// Meseros (solo nombre) y código del negocio para activar su celular. Permisos de cada cuenta.
+// Dueño y encargado ven todo; mesero solo comandero y cocina.
 (function (g) {
   const PB = (g.PB = g.PB || {});
   PB.pantallas = PB.pantallas || {};
   PB.pantallas.equipo = {
-    ruta: 'equipo', titulo: 'Equipo', icono: '👥', desc: 'Dueño, encargado y empleados', soloAdmin: true,
+    ruta: 'equipo', titulo: 'Equipo', desc: 'Meseros y permisos', soloAdmin: true,
     async mostrar(cont) {
-      const { h, aviso, encabezado } = PB.ui;
-      const lista = h('div', { class: 'lista' });
-      async function pintar() {
-        const perfiles = await PB.datos.listar('perfiles', 'creado_en');
-        lista.replaceChildren(...perfiles.map((p) => {
-          const sel = h('select', { 'aria-label': 'Permiso de ' + (p.correo || 'usuario') }, Object.entries(PB.config.roles).map(([k, t]) => h('option', { value: k, selected: k === p.rol }, t)));
+      const { h, aviso, encabezado, icono } = PB.ui;
+      const codigoCaja = h('div', {}), meserosLista = h('div', { class: 'lista' }), cuentas = h('div', { class: 'lista' });
+      const nombre = h('input', { class: 'entrada', name: 'mesero', placeholder: 'Nombre del mesero', autocomplete: 'off' });
+
+      async function pintarCodigo() {
+        const filas = await PB.datos.listar('codigo_acceso', 'actualizado_en');
+        const c = (filas[0] || {}).codigo || '······';
+        codigoCaja.replaceChildren(h('div', { class: 'hero', style: 'text-align:center' },
+          h('span', {}, 'Código del negocio'),
+          h('b', { class: 'num', style: 'font-size:44px;letter-spacing:.18em' }, c),
+          h('span', {}, 'El mesero lo pone una sola vez en su celular y luego toca su nombre.'),
+          h('button', { type: 'button', class: 'btn sec', onclick: async () => {
+            if (!confirm('¿Cambiar el código? Los celulares ya activados siguen funcionando; los nuevos usarán el código nuevo.')) return;
+            try { await PB.datos.rpc('nuevo_codigo', {}); aviso('Código cambiado'); pintarCodigo(); }
+            catch (e) { aviso('No se cambió: ' + e.message, 'mal'); }
+          } }, 'Cambiar código')));
+      }
+      async function pintarMeseros() {
+        const ms = await PB.datos.listar('meseros', 'nombre');
+        meserosLista.replaceChildren(...(ms.length ? ms.map((m) => h('div', { class: 'item' + (m.activo ? '' : ' anulada') },
+          h('span', { class: 'foto mono', style: 'width:40px;height:40px;border-radius:20px;font-size:16px' }, m.nombre.slice(0, 1).toUpperCase()),
+          h('div', { class: 'crece' }, h('b', {}, m.nombre), h('small', {}, m.activo ? 'Puede tomar órdenes' : 'Dado de baja: ya no entra')),
+          h('button', { type: 'button', role: 'switch', class: 'switch', 'aria-checked': String(!!m.activo), 'aria-label': 'Activo: ' + m.nombre, onclick: async () => {
+            const nuevo = !m.activo;
+            try { await PB.datos.actualizar('meseros', m.id, { activo: nuevo }); m.activo = nuevo; aviso(nuevo ? `${m.nombre} puede entrar` : `${m.nombre} ya no puede entrar`); pintarMeseros(); }
+            catch (e) { aviso('No se cambió: ' + e.message, 'mal'); }
+          } }))) : [h('p', { class: 'vacio' }, 'Aún no hay meseros.')]));
+      }
+      async function pintarCuentas() {
+        const perfiles = (await PB.datos.listar('perfiles', 'creado_en')).filter((p) => p.rol !== 'empleado');
+        cuentas.replaceChildren(...perfiles.map((p) => {
+          const sel = h('select', { 'aria-label': 'Permiso de ' + (p.correo || p.nombre || 'usuario') }, Object.entries(PB.config.roles).map(([k, t]) => h('option', { value: k, selected: k === p.rol }, t)));
           sel.addEventListener('change', async () => {
-            if (p.id === PB.estado.perfil.id && sel.value === 'empleado' && !confirm('Te quitarías el acceso de dueño. ¿Seguro?')) { sel.value = p.rol; return; }
+            if (p.id === PB.estado.perfil.id && sel.value !== 'dueno' && !confirm('Te quitarías el acceso de dueño. ¿Seguro?')) { sel.value = p.rol; return; }
             try { await PB.datos.actualizar('perfiles', p.id, { rol: sel.value }); p.rol = sel.value; aviso('Permiso actualizado'); }
             catch (e) { aviso('No se cambió: ' + e.message, 'mal'); sel.value = p.rol; }
           });
-          return h('div', { class: 'item' }, h('div', { class: 'crece' }, h('b', {}, p.correo || 'Sin correo')), sel);
+          return h('div', { class: 'item' }, h('div', { class: 'crece' }, h('b', {}, p.nombre || p.correo || 'Sin nombre'), h('small', {}, p.correo || '')), sel);
         }));
       }
-      cont.replaceChildren(encabezado('Equipo', 'Permisos de cada persona', true),
-        h('main', {}, lista,
-          h('div', { class: 'caja-info' }, h('b', {}, 'Agregar a alguien'),
-            h('p', {}, 'Crea su correo y contraseña en Supabase (Add user, marca Auto Confirm). Entra como Mesero (solo comandero y cocina); aquí le cambias el permiso.'),
-            h('a', { class: 'btn sec', href: 'https://supabase.com/dashboard/project/cjmssooisrejdshskoec/auth/users', target: '_blank', rel: 'noopener' }, 'Abrir usuarios en Supabase'))));
-      await pintar();
+
+      cont.replaceChildren(encabezado('Equipo', 'Meseros y permisos', true),
+        h('main', {}, codigoCaja,
+          h('div', { class: 'tit' }, 'Meseros'),
+          h('form', { class: 'caja', style: 'grid-template-columns:1fr auto;align-items:center', onsubmit: async (ev) => {
+            ev.preventDefault();
+            const n = nombre.value.trim();
+            if (!n) return aviso('Escribe el nombre', 'mal');
+            try { await PB.datos.agregar('meseros', { nombre: n }); nombre.value = ''; aviso(`${n} agregado`); pintarMeseros(); }
+            catch (e) { aviso('No se guardó: ' + e.message, 'mal'); }
+          } }, nombre, h('button', { class: 'btn', style: 'width:auto;padding:0 18px', 'aria-label': 'Agregar mesero' }, icono('mas'), 'Agregar')),
+          meserosLista,
+          h('div', { class: 'tit' }, 'Cuentas de administración'), cuentas,
+          h('p', { class: 'nota' }, 'Para dar de baja a un mesero, apaga su interruptor: su celular deja de funcionar al momento.')));
+      await Promise.all([pintarCodigo(), pintarMeseros(), pintarCuentas()]);
     },
   };
 })(typeof window !== 'undefined' ? window : globalThis);
@@ -1389,15 +1429,50 @@ main{padding:16px;max-width:760px;margin:0 auto}
       campo('Clave anon', k), h('button', { class: 'btn' }, 'Guardar'))));
   }
 
-  function pantallaEntrar() {
-    const correo = h('input', { type: 'email', name: 'correo', autocomplete: 'username', required: true });
-    const clave = h('input', { type: 'password', name: 'clave', autocomplete: 'current-password', required: true });
-    app.replaceChildren(encabezadoMarca(PB.config.subtitulo), h('main', {},
-      h('form', { class: 'caja', onsubmit: async (ev) => {
+  const leerCodigo = () => { try { return localStorage.getItem('pb_codigo') || ''; } catch (e) { return ''; } };
+  const guardarCodigo = (c) => { try { localStorage.setItem('pb_codigo', c); } catch (e) { /* sin memoria local */ } };
+
+  // Entrada: Mesero (código del negocio + su nombre) o Administrador (correo y contraseña).
+  function pantallaEntrar(modo) {
+    modo = modo || 'mesero';
+    const tabs = h('div', { class: 'periodo', role: 'tablist', 'aria-label': 'Tipo de acceso', style: 'grid-template-columns:repeat(2,minmax(0,1fr))' },
+      [['mesero', 'Mesero'], ['admin', 'Administrador']].map(([k, t]) => h('button', { type: 'button', role: 'tab', 'aria-selected': String(k === modo), class: k === modo ? 'on' : '', onclick: () => pantallaEntrar(k) }, t)));
+    let caja;
+    if (modo === 'admin') {
+      const correo = h('input', { type: 'email', name: 'correo', autocomplete: 'username', required: true });
+      const clave = h('input', { type: 'password', name: 'clave', autocomplete: 'current-password', required: true });
+      caja = h('form', { class: 'caja', onsubmit: async (ev) => {
         ev.preventDefault();
         try { await PB.datos.entrar(correo.value.trim(), clave.value); PB.estado.perfil = null; ruta(); }
         catch (e) { aviso('No se pudo entrar: ' + e.message, 'mal'); }
-      } }, campo('Correo', correo), campo('Contraseña', clave), h('button', { class: 'btn' }, 'Entrar'))));
+      } }, campo('Correo', correo), campo('Contraseña', clave), h('button', { class: 'btn' }, 'Entrar'));
+    } else {
+      const cod = h('input', { name: 'codigo', inputmode: 'numeric', autocomplete: 'off', maxlength: '6', placeholder: '000000', value: leerCodigo(), style: 'font-size:24px;letter-spacing:.3em;text-align:center' });
+      caja = h('form', { class: 'caja', onsubmit: async (ev) => {
+        ev.preventDefault();
+        const c = cod.value.replace(/\D/g, '');
+        if (c.length !== 6) return aviso('El código tiene 6 números', 'mal');
+        try {
+          if (!(await PB.datos.usuario())) await PB.datos.entrarSinCorreo();
+          const meseros = await PB.datos.rpc('meseros_para_elegir', { p_codigo: c });
+          guardarCodigo(c);
+          elegirMesero(c, meseros);
+        } catch (e) { aviso(/incorrecto/i.test(e.message) ? 'Código incorrecto. Pídeselo al encargado.' : 'No se pudo: ' + e.message, 'mal'); }
+      } }, h('p', {}, 'Pon el código del negocio. Solo la primera vez en este celular.'), campo('Código', cod), h('button', { class: 'btn' }, 'Continuar'));
+    }
+    app.replaceChildren(encabezadoMarca(PB.config.subtitulo), h('main', {}, tabs, caja));
+  }
+
+  function elegirMesero(codigo, meseros) {
+    app.replaceChildren(encabezadoMarca('¿Quién eres?'), h('main', {},
+      h('div', { class: 'tit' }, 'Toca tu nombre'),
+      meseros.length ? h('div', { class: 'tiles', style: 'grid-template-columns:repeat(2,minmax(0,1fr))' }, meseros.map((m) =>
+        h('button', { type: 'button', class: 'tile', style: 'align-items:center;justify-content:center;text-align:center', onclick: async () => {
+          try { await PB.datos.rpc('activar_mesero', { p_codigo: codigo, p_mesero: m.id }); PB.estado.perfil = null; location.hash = ''; ruta(); }
+          catch (e) { aviso('No se pudo: ' + e.message, 'mal'); }
+        } }, h('span', { class: 'foto mono', style: 'width:52px;height:52px;border-radius:26px;font-size:20px' }, m.nombre.slice(0, 1).toUpperCase()), h('b', { style: 'font-size:16px' }, m.nombre))))
+        : h('p', { class: 'vacio' }, 'Aún no hay meseros dados de alta. Pídele al encargado que te agregue.'),
+      h('button', { class: 'btn sec', style: 'margin-top:16px', type: 'button', onclick: () => pantallaEntrar('mesero') }, 'Volver')));
   }
 
   // Tarjeta «Ventas de hoy» con datos reales (solo dueño/encargado).
@@ -1432,25 +1507,35 @@ main{padding:16px;max-width:760px;margin:0 auto}
         h('div', { class: 'saludo', style: admin ? '' : 'padding-bottom:8px' },
           h('span', {}, cap(ahora.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' }))),
           h('b', {}, saludo + (nombre ? ', ' + cap(nombre) : '')))),
-      admin && !perfil.sinRoles ? hoyCaja : null,
+      admin ? hoyCaja : null,
       h('main', {},
         PB.estado.vistaMesero ? h('div', { class: 'alerta' }, h('b', {}, 'Estás viendo la app como mesero.'),
           h('button', { class: 'btn sec', type: 'button', onclick: () => { PB.estado.vistaMesero = false; inicio(); } }, 'Volver a administrador')) : null,
-        perfil.sinRoles ? h('div', { class: 'alerta' }, h('b', {}, 'Falta actualizar la base.'), h('span', {}, 'Avísale a Claude para que la actualice.')) : null,
         h('a', { class: 'cta', href: '#/comandero' }, h('span', { class: 'ic' }, icono('comanda', 24)),
           h('span', { class: 'crece' }, h('b', {}, 'Nueva orden'), h('span', {}, 'Mesa, para llevar o plataforma')), icono('sig', 22)),
         h('div', { class: 'tit' }, admin ? 'Administrar' : 'Más'),
         h('div', { class: 'tiles' }, botones.map((p, n) => h('a', { class: 'tile', href: '#/' + p.ruta },
           h('span', { class: TONO[n % 3] }, icono(IC[p.ruta] || 'menu')), h('b', {}, CORTO[p.ruta] || p.titulo)))),
         esAdmin() ? h('button', { class: 'btn sec', style: 'margin-top:20px', type: 'button', onclick: () => { PB.estado.vistaMesero = true; inicio(); scrollTo(0, 0); } }, icono('equipo'), 'Ver como mesero') : null,
-        h('button', { class: 'btn sec', style: 'margin-top:10px', type: 'button', onclick: async () => { await PB.datos.salir(); PB.estado.perfil = null; PB.estado.vistaMesero = false; location.hash = ''; ruta(); } }, icono('salir'), 'Salir'),
+        h('button', { class: 'btn sec', style: 'margin-top:10px', type: 'button', onclick: async () => { await PB.datos.salir(); PB.estado.perfil = null; PB.estado.vistaMesero = false; location.hash = ''; ruta(); } }, icono('salir'), esAdminReal() ? 'Salir' : 'Cambiar de mesero'),
         h('p', { class: 'nota', style: 'text-align:center' }, 'Versión ' + PB.config.version)));
-    if (admin && !perfil.sinRoles) tarjetaHoy(hoyCaja);
+    if (admin) tarjetaHoy(hoyCaja);
   }
 
   async function ruta() {
     if (!(await PB.datos.usuario())) return pantallaEntrar();
     if (!PB.estado.perfil) PB.estado.perfil = await PB.datos.perfil();
+    if (!PB.estado.perfil) {
+      // Sesión sin permiso: celular de mesero sin activar, o cuenta sin permiso.
+      if (await PB.datos.esSinCorreo()) {
+        const c = leerCodigo();
+        if (c) { try { return elegirMesero(c, await PB.datos.rpc('meseros_para_elegir', { p_codigo: c })); } catch (e) { /* código cambió */ } }
+        return pantallaEntrar('mesero');
+      }
+      await PB.datos.salir();
+      aviso('Esta cuenta no tiene permiso. Pídeselo al dueño.', 'mal');
+      return pantallaEntrar('admin');
+    }
     const nombre = location.hash.replace('#/', '') || 'inicio';
     const p = PB.pantallas[nombre];
     document.body.className = '';
