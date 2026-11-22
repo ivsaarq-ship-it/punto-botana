@@ -290,7 +290,7 @@ main>.total{padding:12px 14px;margin:12px 0}
 (function (g) {
   const PB = (g.PB = g.PB || {});
   PB.config = {
-    version: '0.11.0',
+    version: '0.11.1',
     nombreApp: 'Punto Botana',
     subtitulo: 'by Kalli Terraza',
     supabaseUrl: 'https://cjmssooisrejdshskoec.supabase.co',
@@ -1973,6 +1973,7 @@ main>.total{padding:12px 14px;margin:12px 0}
       }
       await cargar();
       let seleccion = null; // Set de pedidos marcados para cancelar
+      let verPedidos = false; // la lista de pedidos sigue abierta al repintar
       const ANTERIOR = { hoy: 'ayer', semana: 'semana_pasada', mes: 'mes_pasado' };
       const NOMBRE = { hoy: 'Hoy', semana: 'Semana', mes: 'Mes' };
       const VS = { hoy: 'ayer', semana: 'la semana pasada', mes: 'el mes pasado' };
@@ -2008,35 +2009,47 @@ main>.total{padding:12px 14px;margin:12px 0}
         const r = V.rango(periodo, dia);
         const todos = pedidos.filter((p) => { const f = V.fechaLocal(p.creado_en); return f >= r.desde && f <= r.hasta; })
           .sort((a, b) => (a.creado_en < b.creado_en ? 1 : -1));
-        const det = h('details', { class: 'grupo-neg', open: seleccion != null },
-          h('summary', {}, h('span', {}, h('b', {}, 'Pedidos'), h('small', {}, `${todos.length} en el periodo · deja presionado para seleccionar`)), icono('abajo', 18)),
+        const det = h('details', { class: 'grupo-neg', open: seleccion != null || verPedidos },
+          h('summary', {}, h('span', {}, h('b', {}, 'Pedidos'), h('small', {}, `${todos.length} en el periodo · deja presionado para cancelar o borrar`)), icono('abajo', 18)),
           h('div', { style: 'padding:0 12px 12px;display:grid;gap:8px' },
             seleccion ? h('div', { class: 'barra-sel', style: 'position:static' },
               h('button', { type: 'button', class: 'mini', onclick: () => { seleccion = null; pintar(); } }, 'Listo'),
               h('span', {}, `${seleccion.size} marcados`),
-              h('button', { type: 'button', class: 'mini peligro', disabled: !seleccion.size, onclick: cancelarMarcados }, 'Quitar de ventas'))
+              h('button', { type: 'button', class: 'mini', disabled: !seleccion.size, onclick: cancelarMarcados }, 'Cancelar'),
+              h('button', { type: 'button', class: 'mini peligro', disabled: !seleccion.size, onclick: borrarMarcados }, 'Borrar'))
               : (todos.length ? h('button', { type: 'button', class: 'btn sec', onclick: () => { seleccion = new Set(); pintar(); } }, 'Seleccionar para corregir') : null),
             ...todos.map((p) => {
               const est = P.estadoActual(p.id, estados), cancelado = est === 'cancelado', marcado = seleccion && seleccion.has(p.id);
               const its = items.filter((i) => i.pedido_id === p.id);
               const fila = h('div', { class: 'item' + (cancelado ? ' anulada' : '') + (marcado ? ' marcada' : ''), style: 'cursor:pointer;user-select:none',
-                onclick: () => { if (!seleccion || cancelado) return; marcado ? seleccion.delete(p.id) : seleccion.add(p.id); pintar(); } },
-                seleccion && !cancelado ? h('span', { class: 'check' + (marcado ? ' on' : ''), 'aria-hidden': 'true' }) : null,
+                onclick: () => { if (!seleccion) return; marcado ? seleccion.delete(p.id) : seleccion.add(p.id); pintar(); } },
+                seleccion ? h('span', { class: 'check' + (marcado ? ' on' : ''), 'aria-hidden': 'true' }) : null,
                 h('div', { class: 'crece' }, h('b', {}, `#${p.folio} · ${p.tipo === 'mesa' ? 'Mesa ' + p.referencia : p.tipo === 'llevar' ? 'Para llevar' : p.referencia || 'Plataforma'}`),
                   h('small', {}, new Date(p.creado_en).toLocaleString('es-MX', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) + ' · ' + its.map((i) => `${i.cantidad} ${i.nombre}`).join(', '))),
                 h('div', { class: 'der' }, h('b', {}, dineroCorto(p.total)), cancelado ? h('span', { class: 'chip', style: 'background:#B42318' }, 'Cancelado') : null));
               // Dejar presionado: entra a seleccionar y marca este pedido.
-              if (!cancelado) PB.ui.alPresionar(fila, () => { seleccion = seleccion || new Set(); seleccion.add(p.id); pintar(); });
+              PB.ui.alPresionar(fila, () => { seleccion = seleccion || new Set(); seleccion.add(p.id); pintar(); });
               return fila;
             })));
+        det.addEventListener('toggle', () => { verPedidos = det.open; });
         return det;
       }
       async function cancelarMarcados() {
-        const ids = [...seleccion];
-        if (!(await PB.ui.confirmar(`¿Quitar ${ids.length} ${ids.length === 1 ? 'pedido' : 'pedidos'} de las ventas? Dejan de sumar (queda registro).`, 'Sí, quitar de ventas'))) return;
+        const ids = [...seleccion].filter((id) => P.estadoActual(id, estados) !== 'cancelado');
+        if (!ids.length) return aviso('Esos pedidos ya están cancelados', 'mal');
+        if (!(await PB.ui.confirmar(`¿Cancelar ${ids.length} ${ids.length === 1 ? 'pedido' : 'pedidos'}? Dejan de sumar y quedan como «Cancelado».`, 'Sí, cancelar'))) return;
         try {
           for (const id of ids) await PB.datos.agregar('pedido_estados', { pedido_id: id, estado: 'cancelado' });
-          seleccion = null; await cargar(); pintar(); pintarCalendario(); aviso('Pedidos quitados de ventas');
+          seleccion = null; await cargar(); pintar(); pintarCalendario(); aviso('Pedidos cancelados');
+        } catch (e) { aviso('No se pudo: ' + e.message, 'mal'); }
+      }
+      // Borrar de verdad (para pruebas o errores). No se puede deshacer.
+      async function borrarMarcados() {
+        const ids = [...seleccion];
+        if (!(await PB.ui.confirmar(`¿Borrar ${ids.length} ${ids.length === 1 ? 'pedido' : 'pedidos'} para siempre? No se puede deshacer.`, 'Sí, borrar'))) return;
+        try {
+          await PB.datos.rpc('borrar_pedidos', { p_ids: ids });
+          seleccion = null; await cargar(); pintar(); pintarCalendario(); aviso('Pedidos borrados');
         } catch (e) { aviso('No se pudo: ' + e.message, 'mal'); }
       }
       function pintarCalendario() {
