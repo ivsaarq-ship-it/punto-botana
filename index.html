@@ -306,7 +306,7 @@ main>.total{padding:12px 14px;margin:12px 0}
 (function (g) {
   const PB = (g.PB = g.PB || {});
   PB.config = {
-    version: '0.11.2',
+    version: '0.11.3',
     nombreApp: 'Punto Botana',
     subtitulo: 'by Kalli Terraza',
     supabaseUrl: 'https://cjmssooisrejdshskoec.supabase.co',
@@ -519,6 +519,12 @@ main>.total{padding:12px 14px;margin:12px 0}
   const fmt0 = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', maximumFractionDigits: 0 });
   const iniciales = (n) => String(n).replace(/[^A-Za-zÁÉÍÓÚÑáéíóúñ ]/g, '').split(' ').filter((x) => x.length > 2 || x === x.toUpperCase()).slice(0, 2).map((x) => x[0]).join('').toUpperCase() || String(n).slice(0, 2).toUpperCase();
 
+  // Seguro: nunca escribir «null»/«undefined» en pantalla al repintar.
+  if (g.Element && !Element.prototype.__pbSinNulos) {
+    const orig = Element.prototype.replaceChildren;
+    Element.prototype.replaceChildren = function (...hijos) { return orig.apply(this, hijos.filter((c) => c != null && c !== false)); };
+    Element.prototype.__pbSinNulos = true;
+  }
   PB.ui = {
     h, icono,
     dinero: (n) => fmt.format(Number(n) || 0),
@@ -1438,7 +1444,7 @@ main>.total{padding:12px 14px;margin:12px 0}
         }
         const botonesProp = h('div', { class: 'extras' }, [0, ...R.PROPINAS].map((p) => h('button', { type: 'button', 'data-p': p || '', 'aria-pressed': String((p || null) === st.pct && !st.otro),
           onclick: () => { st.pct = p || null; st.otro = ''; otroIn.value = ''; pintarTotales(); } }, p ? p + '%' : 'Sin propina')), otroIn);
-        cuerpo.replaceChildren(
+        cuerpo.replaceChildren(...[
           h('div', { class: 'mesas', role: 'group', 'aria-label': 'Mesa' }, lista.map((m) => h('button', { type: 'button', class: m === st.mesa ? 'on' : '', 'aria-pressed': String(m === st.mesa),
             onclick: () => { st.mesa = m; st.quien = null; pintar(); } }, m))),
           h('section', { class: 'hero' }, h('span', {}, 'Mesa ' + st.mesa + ' · total de la mesa'), h('b', { class: 'num', style: 'display:block' }, dineroCorto(R.suma(peds))),
@@ -1450,7 +1456,7 @@ main>.total{padding:12px 14px;margin:12px 0}
           !st.quien && (nombres.length === 1 && nombres[0] === R.SIN) ? h('div', { class: 'renglon' }, renglones(peds)) : null,
           h('p', { class: 'nota', style: 'margin:4px 0' }, st.quien ? `Cobrando solo a ${st.quien}. Tócalo otra vez para la mesa completa.` : nombres.length > 1 ? 'Toca un nombre para cobrarle solo a esa persona.' : ''),
           h('div', { class: 'tit' }, 'Propina'), botonesProp, totales,
-          h('button', { type: 'button', class: 'btn', onclick: cobrar_ }, st.quien ? 'Cobrar a ' + st.quien : 'Cobrar mesa ' + st.mesa));
+          h('button', { type: 'button', class: 'btn', onclick: cobrar_ }, st.quien ? 'Cobrar a ' + st.quien : 'Cobrar mesa ' + st.mesa)].filter(Boolean)); // sin nulos (si no, sale «null» escrito)
         pintarTotales();
         async function cobrar_() {
           const p2 = R.propina(sub, st.pct, st.otro === '' ? null : st.otro);
